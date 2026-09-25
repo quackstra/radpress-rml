@@ -56,11 +56,21 @@ async function submit(privHex: string, manifest: string, message?: Uint8Array, b
   const compiled = await R.RadixEngineToolkit.NotarizedTransaction.compile(tx);
   const id = (await R.RadixEngineToolkit.NotarizedTransaction.intentHash(tx)).id;
   await gw('/transaction/submit', { notarized_transaction_hex: hex(compiled) });
-  for (let i = 0; i < 40; i++) {
-    try { const d = await gw('/transaction/committed-details', { intent_hash: id }); const s = d.transaction?.transaction_status; if (s === 'CommittedSuccess') return id; if (s && s !== 'Pending' && s !== 'Unknown') throw new Error('tx ' + s); } catch (err) { if (String(err).includes('tx ')) throw err; }
-    await new Promise((r) => setTimeout(r, 2000));
+  // Poll /transaction/status: it reports Pending vs Committed vs Rejected with a
+  // reason (committed-details only ever returns COMMITTED txs, so a rejected tx
+  // there looks like an endless timeout).
+  let last = 'Pending';
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    let s;
+    try { s = await gw('/transaction/status', { intent_hash: id }); } catch { continue; }
+    last = s.intent_status || last;
+    if (last === 'CommittedSuccess') return id;
+    if (last === 'CommittedFailure' || last === 'PermanentlyRejected')
+      throw new Error(`${last}: ${s.error_message || s.intent_status_description || 'transaction rejected by the network'}`);
+    // Pending / Unknown / LikelyButNotCertainRejection -> keep waiting
   }
-  throw new Error('timed out waiting for commit');
+  throw new Error(`still ${last} after 2.5 min — the Gateway may be slow; check the account later`);
 }
 
 export async function fundFromFaucet(privHex: string, account: string): Promise<string> {
@@ -74,6 +84,11 @@ CALL_METHOD Address("${account}") "try_deposit_batch_or_abort" Expression("ENTIR
 // Publish the whole cart as ONE v1 COMMIT transaction, signed in-browser. Bodies are
 // stored uncompressed (no zstd encoder in-browser yet — compression stays reserved).
 export async function publishCart(privHex: string, account: string, cart: CartAction[]): Promise<string> {
+  // Publishing costs a fee — a brand-new account with 0 XRD will have its lock_fee
+  // rejected. Guide the user to fund first instead of failing cryptically.
+  if ((await xrdBalance(account)) < 1) {
+    throw new Error('This account has no XRD. Go to the Account tab and "Fund from faucet" first.');
+  }
   const subOps: CommitSubOp[] = [];
   const blobs: Uint8Array[] = [];
   for (const a of cart) {
