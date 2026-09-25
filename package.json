@@ -1,0 +1,23 @@
+{
+  "name": "radpress",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Radix-native site builder with social features, built on Quackdown. One client of an open on-ledger format.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@quackdown/core": "https://github.com/quackstra/radix-markup-language/releases/download/core-v1.1.0/quackdown-core-1.1.0.tgz",
+    "fzstd": "^0.1.1",
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
