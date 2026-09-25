@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@quackdown/core": "https://github.com/quackstra/radix-markup-language/releases/download/core-v1.1.0/quackdown-core-1.1.0.tgz",
+    "@radixdlt/radix-engine-toolkit": "1.0.6",
     "fzstd": "^0.1.1",
     "markdown-it": "^14.1.0"
   },

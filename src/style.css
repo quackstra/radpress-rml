@@ -63,3 +63,40 @@ h2 { font-size: 1.15rem; margin: 26px 0 12px; }
 .rp-cart-row { display: flex; justify-content: space-between; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-family: ui-monospace, monospace; font-size: 13px; }
 .rp-x { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
 .rp-checkout { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; font-size: 14px; }
+
+/* ---------- UI polish ---------- */
+body { line-height: 1.62; }
+a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.rp-postcard, .rp-dir-item, .rp-chip, .rp-btn, .rp-tab { transition: transform .06s ease, border-color .15s ease, background .15s ease; }
+.rp-postcard:hover, .rp-dir-item:hover { transform: translateY(-1px); border-color: var(--accent); }
+.rp-h1 { letter-spacing: -0.02em; line-height: 1.15; }
+h2 { letter-spacing: -0.01em; color: var(--fg); }
+.rp-content h1, .rp-content h2, .rp-content h3 { letter-spacing: -0.015em; }
+.rp-content > :first-child { margin-top: 0; }
+.rp-link { color: var(--link); text-decoration: none; }
+
+/* ---------- Studio ---------- */
+.rp-idbar { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 14px; margin: 10px 0 18px; font-size: 14px; }
+.rp-iddot { color: var(--accent); }
+.rp-idacct { font-family: ui-monospace, monospace; }
+.rp-idbal { margin-left: auto; }
+.rp-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+.rp-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+  padding: 10px 14px; font: inherit; text-transform: capitalize; cursor: pointer; min-height: 44px; }
+.rp-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
+.rp-studio-body { min-height: 200px; }
+.rp-warn { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid var(--accent);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+.rp-box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.rp-mono { font-family: ui-monospace, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.rp-form label, .rp-studio-body > label { display: block; font-size: 12px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
+.rp-busy { background: var(--card); border: 1px dashed var(--accent); border-radius: 10px; padding: 10px 14px; margin: 8px 0; font-size: 14px; }
+
+/* theme editor */
+.rp-tokgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin: 8px 0; }
+.rp-tok { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--fg); margin: 0; }
+.rp-color { width: 34px; height: 34px; border: 0; background: none; padding: 0; border-radius: 8px; cursor: pointer; }
+.rp-pagelist { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

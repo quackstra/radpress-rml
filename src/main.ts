@@ -2,26 +2,13 @@ import { makeRenderer } from './md.js';
 import { applyTheme, DEFAULT_THEME } from './theme.js';
 import {
   getDirectory, getSite, getProfile, listPosts, getObject, getReplies, getFeed, getFollows,
-  publishedPaths, materialize, type PostItem,
+  publishedPaths, type PostItem,
 } from './data.js';
-import { ObjectType, parsePage, asPost, normalizePath } from '@quackdown/core';
-import { loadCart, saveCart, makeContent, previewCommit, exportCart, type CartAction } from './compose.js';
+import { ObjectType, asPost, normalizePath } from '@quackdown/core';
+import { el, short, chrome } from './dom.js';
+import { openStudio } from './studio.js';
 
 const app = document.getElementById('app')!;
-const short = (a: string) => a.slice(0, 16) + '…' + a.slice(-6);
-
-function el(tag: string, attrs: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElement {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  for (const k of kids) e.append(k);
-  return e;
-}
-function chrome(...extra: Node[]): HTMLElement {
-  const bar = el('header', { class: 'rp-top' },
-    el('a', { href: '#/', class: 'rp-brand' }, '🦆 Radpress'),
-    el('nav', { class: 'rp-nav' }, el('a', { href: '#/compose' }, 'Compose'), ...extra));
-  return bar;
-}
 function loading(msg = 'Reading the ledger…') { app.replaceChildren(el('div', { class: 'rp-loading' }, msg)); }
 function content(site: string, markdown: string): HTMLElement {
   const a = el('article', { class: 'rp-content' });
@@ -147,79 +134,11 @@ async function feed(account: string) {
   app.replaceChildren(chrome(), main);
 }
 
-// ---- Composer + cart ----
-async function compose() {
-  applyTheme(DEFAULT_THEME);
-  const main = el('main', { class: 'rp-main' });
-  main.append(el('h1', { class: 'rp-h1' }, 'Compose'));
-
-  const type = el('select', { class: 'rp-in' }) as HTMLSelectElement;
-  for (const t of ['post', 'page', 'profile', 'follows', 'reply']) type.append(el('option', { value: t }, t));
-  const path = el('input', { class: 'rp-in', placeholder: '/posts/hello' }) as HTMLInputElement;
-  const title = el('input', { class: 'rp-in', placeholder: 'Title (post)' }) as HTMLInputElement;
-  const extra = el('input', { class: 'rp-in', placeholder: 'tags (csv) / accounts (csv, follows) / rdx:tx:… (reply)' }) as HTMLInputElement;
-  const body = el('textarea', { class: 'rp-ta', placeholder: '# Markdown body…', rows: '10' }) as HTMLTextAreaElement;
-  const preview = el('article', { class: 'rp-content rp-preview' });
-  const renderPreview = () => { preview.innerHTML = makeRenderer('preview')(body.value || '_nothing yet_'); };
-  body.addEventListener('input', renderPreview); renderPreview();
-  type.addEventListener('change', () => {
-    path.value = type.value === 'profile' ? '/' : type.value === 'follows' ? '/follows' : path.value;
-  });
-
-  const form = el('div', { class: 'rp-form' },
-    el('label', {}, 'Type'), type, el('label', {}, 'Path'), path,
-    el('label', {}, 'Title'), title, el('label', {}, 'Tags / accounts / reply-to'), extra,
-    el('label', {}, 'Body (markdown)'), body);
-  const addBtn = el('button', { class: 'rp-btn' }, 'Add to cart');
-  form.append(addBtn);
-
-  const cartBox = el('div', { class: 'rp-cart' });
-  const renderCart = async () => {
-    const cart = loadCart();
-    cartBox.replaceChildren(el('h2', {}, `Cart (${cart.length})`));
-    for (const [i, a] of cart.entries()) {
-      const row = el('div', { class: 'rp-cart-row' }, el('span', {}, `${a.type} ${a.type === 'redirect' ? a.from + '→' + a.to : a.path}`));
-      const rm = el('button', { class: 'rp-x' }, '✕');
-      rm.addEventListener('click', () => { const c = loadCart(); c.splice(i, 1); saveCart(c); renderCart(); });
-      row.append(rm); cartBox.append(row);
-    }
-    if (!cart.length) { cartBox.append(el('p', { class: 'rp-muted' }, 'Empty. Add something above.')); return; }
-    const pv = await previewCommit(cart);
-    cartBox.append(el('div', { class: 'rp-checkout' },
-      el('div', {}, `Checkout: ${pv.txCount} transaction · ${pv.blobs} blob(s) · head ${pv.headBytes}/2048 B · est. ~${pv.estFee.toFixed(3)} XRD${pv.fits ? '' : '  ⚠ head too big — split the cart'}`)));
-    const exp = el('button', { class: 'rp-btn' }, 'Export cart (for `qd commit`)');
-    exp.addEventListener('click', () => exportCart(cart));
-    const wallet = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Connect Radix Wallet (soon)');
-    wallet.addEventListener('click', () => alert('One-click wallet publishing via the Radix dApp Toolkit is the next step. For now: Export cart → run `qd commit radpress-cart.json`.'));
-    const clr = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Clear');
-    clr.addEventListener('click', () => { saveCart([]); renderCart(); });
-    cartBox.append(el('div', { class: 'rp-row' }, exp, wallet, clr));
-  };
-
-  addBtn.addEventListener('click', () => {
-    const t = type.value;
-    const meta: any = { type: t };
-    if (t === 'post') { if (title.value) meta.title = title.value; const tags = extra.value.split(',').map((s) => s.trim()).filter(Boolean); if (tags.length) meta.tags = tags; }
-    if (t === 'profile') { if (title.value) meta.name = title.value; }
-    if (t === 'follows') { meta.accounts = extra.value.split(',').map((s) => s.trim()).filter(Boolean); }
-    if (t === 'reply') { meta.to = extra.value.trim(); }
-    let p = path.value.trim(); if (t === 'profile') p = '/'; if (t === 'follows') p = '/follows';
-    if (!p) { alert('Path required'); return; }
-    const cart = loadCart();
-    cart.push({ type: 'publish', path: normalizePath(p), content: makeContent(meta, body.value) });
-    saveCart(cart); renderCart();
-  });
-
-  main.append(el('div', { class: 'rp-compose' }, form, el('div', { class: 'rp-previewwrap' }, el('label', {}, 'Preview'), preview)), cartBox);
-  app.replaceChildren(chrome(), main);
-  renderCart();
-}
-
 // ---- router ----
 function routeParts(): string[] { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean); }
 function route() {
   const p = routeParts();
-  if (p[0] === 'compose') return void compose();
+  if (p[0] === 'studio' || p[0] === 'compose') return void openStudio();
   if (p[0] === 'feed' && p[1]) return void feed(decodeURIComponent(p[1]));
   if (p[0] === 's' && p[1]) {
     const account = decodeURIComponent(p[1]);
