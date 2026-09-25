@@ -1,12 +1,13 @@
 // In-browser Stokenet signer. Lazy-loads the Radix Engine Toolkit (~3 MB wasm) ONLY
 // when the Studio actually publishes, so browsing never pays for it. Signs Quackdown
 // v1 transactions with a pasted/generated testnet key. Testnet only.
-import { encodeCommit, splitBody, Op, Compression, MIME_TYPE, type CommitSubOp } from '@quackdown/core';
+import { encodeCommit, encodeRegister, splitBody, Op, Compression, MIME_TYPE, NETWORKS, DEFAULT_NETWORK, type CommitSubOp } from '@quackdown/core';
 import { browserCrypto } from './env.js';
 import type { CartAction } from './compose.js';
 
 const NETWORK_ID = 2; // Stokenet
 const GW = 'https://stokenet.radixdlt.com';
+const HUB = NETWORKS[DEFAULT_NETWORK]!.hub;
 
 let retPromise: Promise<typeof import('@radixdlt/radix-engine-toolkit')> | null = null;
 const ret = () => (retPromise ??= import('@radixdlt/radix-engine-toolkit'));
@@ -71,6 +72,20 @@ async function submit(privHex: string, manifest: string, message?: Uint8Array, b
     // Pending / Unknown / LikelyButNotCertainRejection -> keep waiting
   }
   throw new Error(`still ${last} after 2.5 min — the Gateway may be slow; check the account later`);
+}
+
+// Add this account to the public directory: owner-call (lock_fee) proves identity,
+// a dust deposit into the hub makes it discoverable, and the REGISTER message names it.
+export async function registerSite(privHex: string, account: string, title: string): Promise<string> {
+  if ((await xrdBalance(account)) < 2) throw new Error('Fund your account first (Account tab → Fund from faucet).');
+  const xrd = (await known()).resources.xrdResource;
+  const manifest = [
+    `CALL_METHOD Address("${account}") "lock_fee" Decimal("5");`,
+    `CALL_METHOD Address("${account}") "withdraw" Address("${xrd}") Decimal("1");`,
+    `TAKE_ALL_FROM_WORKTOP Address("${xrd}") Bucket("dust");`,
+    `CALL_METHOD Address("${HUB}") "try_deposit_or_abort" Bucket("dust") None;`,
+  ].join('\n');
+  return submit(privHex, manifest, encodeRegister(title));
 }
 
 export async function fundFromFaucet(privHex: string, account: string): Promise<string> {

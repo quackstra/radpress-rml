@@ -6,7 +6,7 @@ import { makeRenderer } from './md.js';
 import { applyTheme, DEFAULT_THEME, type ThemeTokens } from './theme.js';
 import { loadCart, saveCart, makeContent, previewCommit, exportCart, type CartAction } from './compose.js';
 import { getIdentity, setIdentity, clearIdentity, genKeyHex, isValidKeyHex, type Identity } from './account.js';
-import { deriveAccount, fundFromFaucet, xrdBalance, publishCart } from './signer.js';
+import { deriveAccount, fundFromFaucet, xrdBalance, publishCart, registerSite } from './signer.js';
 import { getSite, publishedPaths } from './data.js';
 import { normalizePath } from '@quackdown/core';
 
@@ -67,6 +67,18 @@ function accountTab(body: HTMLElement, id: Identity | null) {
     const out = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Sign out / change key');
     out.addEventListener('click', () => { clearIdentity(); tab = 'account'; render(); });
     body.append(el('div', { class: 'rp-row' }, fund, reveal, out));
+
+    // Directory listing
+    body.append(el('h2', {}, 'Public directory'));
+    body.append(el('p', { class: 'rp-muted' }, 'List your site on the Radpress home page so others can find it. Costs ~1 XRD (a dust deposit to the directory hub) + fee.'));
+    const dirTitle = el('input', { class: 'rp-in', placeholder: 'Display name for your site', maxlength: '100' }) as HTMLInputElement;
+    const dirBtn = el('button', { class: 'rp-btn' }, 'Add my site to the directory');
+    dirBtn.addEventListener('click', () => {
+      const t = dirTitle.value.trim();
+      if (!t) return alert('Give your site a display name first.');
+      run('Adding to directory…', async () => { await registerSite(id.privHex, id.account, t); alert('Listed in the directory ✓ — it’ll appear on the home page.'); });
+    });
+    body.append(el('label', {}, 'Site name'), dirTitle, el('div', { class: 'rp-row' }, dirBtn));
     return;
   }
   const gen = el('button', { class: 'rp-btn' }, 'Generate a Stokenet key');
