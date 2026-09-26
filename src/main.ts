@@ -106,7 +106,7 @@ async function page(account: string, path: string) {
     main.append(el('h1', { class: 'rp-h1' }, post.title || path));
     main.append(el('div', { class: 'rp-post-meta' }, `${short(account)} · v${obj.stateVersion}${post.tags?.length ? ' · ' + post.tags.map((t) => '#' + t).join(' ') : ''}`));
     main.append(content(account, post.body));
-    const replies = await getReplies(obj.tx);
+    const replies = await getReplies(obj.tx, obj.op.opIndex);
     main.append(el('h2', {}, `Replies (${replies.length})`));
     const rl = el('div', { class: 'rp-replies' });
     for (const r of replies) {

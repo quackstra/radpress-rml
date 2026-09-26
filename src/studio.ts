@@ -4,10 +4,10 @@
 import { el, short, chrome } from './dom.js';
 import { makeRenderer } from './md.js';
 import { applyTheme, DEFAULT_THEME, type ThemeTokens } from './theme.js';
-import { loadCart, saveCart, makeContent, previewCommit, exportCart, type CartAction } from './compose.js';
-import { getIdentity, setIdentity, clearIdentity, genKeyHex, isValidKeyHex, type Identity } from './account.js';
+import { loadCart, saveCart, makeContent, previewCommit, exportCart, loadBaseline, saveBaseline, clearBaseline } from './compose.js';
+import { getIdentity, setIdentity, clearIdentity, genKeyHex, type Identity } from './account.js';
 import { deriveAccount, fundFromFaucet, xrdBalance, publishCart, registerSite } from './signer.js';
-import { getSite, publishedPaths } from './data.js';
+import { getSite, publishedPaths, snapshotSite } from './data.js';
 import { normalizePath } from '@quackdown/core';
 
 type Tab = 'account' | 'compose' | 'theme' | 'pages';
@@ -17,6 +17,16 @@ let tab: Tab = 'account';
 let busy = '';
 let themeDraft: ThemeTokens = { ...DEFAULT_THEME };
 let composeSeed: { type?: string; path?: string; title?: string; body?: string } = {};
+
+// Add to cart, capturing the site's state baseline on the first item (stale-cart guard).
+function addToCart(action: Parameters<typeof saveCart>[0][number]) {
+  const cart = loadCart();
+  const wasEmpty = cart.length === 0;
+  cart.push(action);
+  saveCart(cart);
+  if (wasEmpty) { const id = getIdentity(); if (id && !loadBaseline()) snapshotSite(id.account).then((s) => saveBaseline({ account: id.account, max: s.max, byPath: s.byPath })).catch(() => {}); }
+  render();
+}
 
 export async function openStudio() {
   const id = getIdentity();
@@ -83,10 +93,7 @@ function accountTab(body: HTMLElement, id: Identity | null) {
   }
   const gen = el('button', { class: 'rp-btn' }, 'Generate a Stokenet key');
   gen.addEventListener('click', () => useKey(genKeyHex(), true));
-  const paste = el('input', { class: 'rp-in rp-mono', placeholder: '…or paste a 64-char hex Stokenet key' }) as HTMLInputElement;
-  const usePasted = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Use pasted key');
-  usePasted.addEventListener('click', () => { if (!isValidKeyHex(paste.value)) return alert('Need a 64-character hex key.'); useKey(paste.value.trim(), false); });
-  body.append(el('p', {}, 'Get a site in two clicks:'), el('div', { class: 'rp-row' }, gen), el('label', {}, 'or bring your own'), el('div', { class: 'rp-row' }, paste, usePasted));
+  body.append(el('p', {}, 'Get a site in one click. Your key is generated locally and shown once — save it to get back in (use "Reveal key" any time to back it up).'), el('div', { class: 'rp-row' }, gen));
 }
 
 async function useKey(privHex: string, generated: boolean) {
@@ -122,8 +129,8 @@ function composeTab(body: HTMLElement) {
     if (t === 'reply') meta.to = extra.value.trim();
     let p = path.value.trim(); if (t === 'profile') p = '/'; if (t === 'follows') p = '/follows';
     if (!p) return alert('Path required.');
-    const cart = loadCart(); cart.push({ type: 'publish', path: normalizePath(p), content: makeContent(meta, ta.value) }); saveCart(cart);
-    composeSeed = {}; render();
+    composeSeed = {};
+    addToCart({ type: 'publish', path: normalizePath(p), content: makeContent(meta, ta.value) });
   });
   body.append(el('div', { class: 'rp-compose' },
     el('div', { class: 'rp-form' }, el('label', {}, 'Type'), type, el('label', {}, 'Path'), path, el('label', {}, 'Title / name'), title, el('label', {}, 'Tags / accounts / reply-to'), extra, el('label', {}, 'Body'), ta, add),
@@ -149,10 +156,8 @@ function themeTab(body: HTMLElement, id: Identity | null) {
   const addBtn = el('button', { class: 'rp-btn' }, 'Add theme to cart');
   addBtn.addEventListener('click', () => {
     if (!id) return alert('Set up an account first (Account tab) so the theme can reference your site.');
-    const cart = loadCart();
-    cart.push({ type: 'publish', path: '/theme-atom', content: makeContent({ type: 'theme', name: name.value, tokens: themeDraft }, `The ${name.value} theme.`) });
-    cart.push({ type: 'publish', path: '/theme', content: makeContent({ type: 'theme-ref', theme: `rdx:page:${id.account}:/theme-atom` }, '') });
-    saveCart(cart); render();
+    addToCart({ type: 'publish', path: '/theme-atom', content: makeContent({ type: 'theme', name: name.value, tokens: themeDraft }, `The ${name.value} theme.`) });
+    addToCart({ type: 'publish', path: '/theme', content: makeContent({ type: 'theme-ref', theme: `rdx:page:${id.account}:/theme-atom` }, '') });
   });
   body.append(el('div', { class: 'rp-row' }, apply, reset, addBtn));
 }
@@ -169,7 +174,7 @@ async function pagesTab(body: HTMLElement, id: Identity | null) {
     for (const p of paths) {
       const row = el('div', { class: 'rp-cart-row' }, el('span', { class: 'rp-mono' }, p));
       const del = el('button', { class: 'rp-x' }, 'delete');
-      del.addEventListener('click', () => { const cart = loadCart(); cart.push({ type: 'delete', path: p }); saveCart(cart); render(); });
+      del.addEventListener('click', () => addToCart({ type: 'delete', path: p }));
       row.append(del); list.append(row);
     }
   } catch { list.replaceChildren(el('p', { class: 'rp-muted' }, 'Could not load your site yet (nothing published?).')); }
@@ -182,7 +187,7 @@ function cartPanel(id: Identity | null): HTMLElement {
   for (const [i, a] of cart.entries()) {
     const row = el('div', { class: 'rp-cart-row' }, el('span', { class: 'rp-mono' }, `${a.type} ${a.type === 'redirect' ? a.from + '→' + a.to : a.path}`));
     const rm = el('button', { class: 'rp-x' }, '✕');
-    rm.addEventListener('click', () => { const c = loadCart(); c.splice(i, 1); saveCart(c); render(); });
+    rm.addEventListener('click', () => { const c = loadCart(); c.splice(i, 1); saveCart(c); if (!c.length) clearBaseline(); render(); });
     row.append(rm); panel.append(row);
   }
   if (!cart.length) { panel.append(el('p', { class: 'rp-muted' }, 'Empty. Compose or design a theme, then add it here.')); return panel; }
@@ -194,15 +199,27 @@ function cartPanel(id: Identity | null): HTMLElement {
   const row = el('div', { class: 'rp-row' });
   const publish = el('button', { class: 'rp-btn' }, id ? 'Publish now (sign in-browser)' : 'Set up account to publish');
   if (id) publish.addEventListener('click', () => run('Publishing… (signing in-browser, ~10s)', async () => {
+    // Stale-cart guard: did the site change since this cart started (e.g. another device)?
+    const base = loadBaseline();
+    if (base && base.account === id.account) {
+      const cur = await snapshotSite(id.account);
+      const changed = new Set<string>();
+      for (const [p, sv] of Object.entries(cur.byPath)) if (base.byPath[p] !== sv) changed.add(p);
+      for (const p of Object.keys(base.byPath)) if (!(p in cur.byPath)) changed.add(p + ' (removed)');
+      if (cur.max !== base.max || changed.size) {
+        const list = [...changed].join(', ') || `state v${base.max} → v${cur.max}`;
+        if (!confirm(`Your site changed since you started this cart (another device?):\n${list}\n\nPublish anyway and overwrite?`)) return;
+      }
+    }
     const tx = await publishCart(id.privHex, id.account, cart);
-    saveCart([]); siteBust(id.account);
+    saveCart([]); clearBaseline(); siteBust(id.account);
     alert('Published in one transaction ✓\n' + tx);
   }));
   else publish.addEventListener('click', () => { tab = 'account'; render(); });
   const exp = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Export cart');
   exp.addEventListener('click', () => exportCart(cart));
   const clr = el('button', { class: 'rp-btn rp-btn-ghost' }, 'Clear');
-  clr.addEventListener('click', () => { saveCart([]); render(); });
+  clr.addEventListener('click', () => { saveCart([]); clearBaseline(); render(); });
   row.append(publish, exp, clr);
   panel.append(row);
   return panel;

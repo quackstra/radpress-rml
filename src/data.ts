@@ -89,7 +89,7 @@ export async function getFeed(account: string): Promise<PostItem[]> {
 
 export interface ReplyItem { account: string; path: string; tx: string; stateVersion: number; reply: Reply; }
 
-export async function getReplies(postTx: string): Promise<ReplyItem[]> {
+export async function getReplies(postTx: string, postOpIndex = 0): Promise<ReplyItem[]> {
   const dir = await getDirectory();
   const out: ReplyItem[] = [];
   for (const site of dir.slice(0, 30)) {
@@ -99,12 +99,24 @@ export async function getReplies(postTx: string): Promise<ReplyItem[]> {
       if (!o || o.parsed.type !== ObjectType.REPLY) continue;
       const reply = asReply(o.parsed);
       const ref = reply && parseRef(reply.to);
-      if (reply && ref?.kind === 'tx' && ref.tx === postTx) {
+      if (reply && ref?.kind === 'tx' && ref.tx === postTx && ref.opIndex === postOpIndex) {
         out.push({ account: site.account, path, tx: o.tx, stateVersion: o.stateVersion, reply });
       }
     }
   }
   return out.sort((a, b) => a.stateVersion - b.stateVersion);
+}
+
+// Fresh (uncached) snapshot of a site's published paths -> state version, for the
+// stale-cart guard.
+export async function snapshotSite(account: string): Promise<{ max: number; byPath: Record<string, number> }> {
+  const { pages } = await resolveSite(await fetchSiteRecords(account), browserCrypto);
+  const byPath: Record<string, number> = {};
+  let max = 0;
+  for (const [path, p] of pages) {
+    if (p.state.status === 'published') { byPath[path] = p.state.op.stateVersion; max = Math.max(max, p.state.op.stateVersion); }
+  }
+  return { max, byPath };
 }
 
 export async function getTheme(account: string): Promise<ThemeTokens> {

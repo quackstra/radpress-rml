@@ -1,7 +1,7 @@
 // In-browser Stokenet signer. Lazy-loads the Radix Engine Toolkit (~3 MB wasm) ONLY
 // when the Studio actually publishes, so browsing never pays for it. Signs Quackdown
 // v1 transactions with a pasted/generated testnet key. Testnet only.
-import { encodeCommit, encodeRegister, splitBody, Op, Compression, MIME_TYPE, NETWORKS, DEFAULT_NETWORK, type CommitSubOp } from '@quackdown/core';
+import { encodeRegister, buildCommit, Op, Compression, MIME_TYPE, NETWORKS, DEFAULT_NETWORK, type CommitBuildItem } from '@quackdown/core';
 import { browserCrypto } from './env.js';
 import type { CartAction } from './compose.js';
 
@@ -104,20 +104,17 @@ export async function publishCart(privHex: string, account: string, cart: CartAc
   if ((await xrdBalance(account)) < 1) {
     throw new Error('This account has no XRD. Go to the Account tab and "Fund from faucet" first.');
   }
-  const subOps: CommitSubOp[] = [];
-  const blobs: Uint8Array[] = [];
+  const items: CommitBuildItem[] = [];
   for (const a of cart) {
     if (a.type === 'publish') {
       const raw = new TextEncoder().encode(a.content);
-      const parts = splitBody(raw);
-      subOps.push({ op: Op.PUBLISH, path: a.path, note: a.note, contentHash: await browserCrypto.sha256(raw), compression: Compression.NONE, blobStart: blobs.length, blobCount: parts.length });
-      blobs.push(...parts);
+      items.push({ op: Op.PUBLISH, path: a.path, note: a.note, bodyBytes: raw, contentHash: await browserCrypto.sha256(raw), compression: Compression.NONE });
     } else if (a.type === 'delete') {
-      subOps.push({ op: Op.DELETE, path: a.path, note: a.note });
+      items.push({ op: Op.DELETE, path: a.path, note: a.note });
     } else {
-      subOps.push({ op: Op.REDIRECT, path: a.from, note: a.note, target: a.to });
+      items.push({ op: Op.REDIRECT, path: a.from, note: a.note, target: a.to });
     }
   }
-  const head = encodeCommit(subOps); // throws if head > 2048 (split the cart)
+  const { head, blobs } = buildCommit(items); // dedupes identical/empty blobs; throws if head > 2048
   return submit(privHex, `CALL_METHOD Address("${account}") "lock_fee" Decimal("50");`, head, blobs);
 }
